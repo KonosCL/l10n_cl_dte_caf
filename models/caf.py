@@ -160,8 +160,7 @@ class sequence_caf(models.Model):
             r.sii_document_class = obj.sii_document_class_id.sii_code
 
     def get_qty_available(self, folio=None):
-        if not folio:
-            folio = self._get_folio()
+        folio = folio or self._get_folio()
         try:
             cafs = self.get_caf_files(folio)
         except:
@@ -208,25 +207,23 @@ class sequence_caf(models.Model):
         return self.number_next_actual
 
     def get_caf_file(self, folio=False):
-        caffiles = self.get_caf_files()
+        folio = folio or self._get_folio()
+        caffiles = self.get_caf_files(folio)
         if not caffiles:
             raise UserError(_('''There is no CAF file available or in use \
 for this Document. Please enable one.'''))
-        folio = folio or self._get_folio()
         for caffile in caffiles:
             if int(folio) >= caffile.start_nm and int(folio) <= caffile.final_nm:
                 return caffile.decode_caf()
-        if int(folio) > caffile.final_nm:
-            msg = '''No Hay caf para el documento: {}, está fuera de rango . Solicite un nuevo CAF en el sitio \
+        msg = '''No Hay caf para el documento: {}, está fuera de rango . Solicite un nuevo CAF en el sitio \
 www.sii.cl'''.format(folio)
-            # defino el status como "spent"
-            #caffile.status = 'spent'
-            raise UserError(_(msg))
-        return False
+        raise UserError(_(msg))
 
     def get_caf_files(self, folio=None):
-        if not folio:
-            folio = self._get_folio()
+        '''
+            Devuelvo caf actual y futuros
+        '''
+        folio = folio or self._get_folio()
         if not self.dte_caf_ids:
             raise UserError(_('''There is no CAF file available or in use \
 for this Document. Please enable one.'''))
@@ -238,12 +235,6 @@ for this Document. Please enable one.'''))
                 result.append(caffile)
         if result:
             return result
-        if int(folio) > caffile.final_nm:
-            msg = '''Ya no existen CAFs para la secuencia actual {} . Solicite un nuevo CAF en el sitio \
-www.sii.cl'''.format(folio)
-            # defino el status como "spent"
-            #caffile.status = 'spent'
-            raise UserError(_(msg))
         return False
 
     def update_next_by_caf(self, folio=None):
@@ -257,11 +248,16 @@ www.sii.cl'''.format(folio)
             self.sudo(SUPERUSER_ID).write({'number_next': menor.start_nm})
 
     def _next_do(self):
+        number_next = self.number_next
+        if self.implementation == 'standard':
+            number_next = self.number_next_actual
         folio = super(sequence_caf, self)._next_do()
         if self.forced_by_caf and self.dte_caf_ids:
             self.update_next_by_caf(folio)
-            number_next = self.number_next
-            if self.implementation != 'standard':
-                number_next -= 1
+            actual = self.number_next
+            if self.implementation == 'standard':
+                actual = self.number_next_actual
+            if number_next +1 != actual: #Fue actualizado
+                number_next = actual
             folio = self.get_next_char(number_next)
         return folio
